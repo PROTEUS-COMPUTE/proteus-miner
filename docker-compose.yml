@@ -1,0 +1,67 @@
+# PROTEUS miner stack for Linux.
+#   vllm   : GPU inference server (needs nvidia-container-toolkit)
+#   miner  : the bittensor neuron, calls vllm, signs with your local hotkey
+#   frpc   : OPTIONAL reverse tunnel (profile "relay") for home GPUs behind
+#            CGNAT/NAT that cannot open an inbound port. On a public-IP machine
+#            (cloud / dedicated server) you do NOT need it.
+#
+# Use the launcher, it fills the env and derives the relay port:
+#   ./run.sh                 # public IP, no relay
+#   RELAY=1 ./run.sh         # home / CGNAT, tunnel the axon through the relay
+services:
+  vllm:
+    image: vllm/vllm-openai:v0.6.6.post1
+    container_name: proteus-vllm
+    restart: unless-stopped
+    ipc: host
+    volumes:
+      - proteus-hf:/root/.cache/huggingface
+    command: >
+      --model ${MODEL:-Qwen/Qwen2.5-3B-Instruct-AWQ}
+      --host 0.0.0.0 --port 8000
+      --max-model-len 8192
+      --gpu-memory-utilization ${GPU_UTIL:-0.90}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  miner:
+    image: ghcr.io/proteus-compute/proteus-miner:latest
+    container_name: proteus-miner
+    restart: unless-stopped
+    depends_on: [vllm]
+    volumes:
+      - ${HOME}/.bittensor:/root/.bittensor
+    environment:
+      VLLM_HOST: http://proteus-vllm:8000
+      MODEL_NAME: ${MODEL:-Qwen/Qwen2.5-3B-Instruct-AWQ}
+    # RELAY_EXTERNAL is empty without relay; the launcher fills it with
+    # --axon.external_ip/--axon.external_port when RELAY=1.
+    command: >
+      --netuid 1
+      --subtensor.chain_endpoint ${RPC:-wss://rpc.proteus-agent.com}
+      --wallet.name ${WALLET_NAME:-miner}
+      --wallet.hotkey ${WALLET_HOTKEY:-expert1}
+      --axon.port 8091
+      --expert.backend vllm
+      ${RELAY_EXTERNAL:-}
+
+  frpc:
+    image: snowdreamtech/frpc:latest
+    container_name: proteus-frpc
+    restart: unless-stopped
+    depends_on: [miner]
+    profiles: [relay]
+    volumes:
+      - ./frpc.toml:/etc/frp/frpc.toml:ro
+    environment:
+      RELAY_HOST: ${RELAY_HOST}
+      RELAY_TOKEN: ${RELAY_TOKEN}
+      RELAY_PORT: ${RELAY_PORT}
+
+volumes:
+  proteus-hf:

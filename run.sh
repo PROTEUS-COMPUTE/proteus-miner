@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# PROTEUS miner launcher (Linux, Docker).
+#   ./run.sh            run on a public-IP machine (cloud / dedicated). No relay.
+#   RELAY=1 ./run.sh    home GPU behind CGNAT/NAT: tunnel the axon through the
+#                       public relay so validators can reach it. No inbound port
+#                       to open on your box.
+#
+# Config via env or a .env file (see .env.example): MODEL, WALLET_NAME,
+# WALLET_HOTKEY, GPU_UTIL, RELAY.
+set -euo pipefail
+
+# shared relay endpoint (public); the token only gates tunnel creation, the
+# relay just forwards to public axons.
+export RELAY_HOST="${RELAY_HOST:-89.116.27.24}"
+export RELAY_TOKEN="${RELAY_TOKEN:-0705c2dabde90ccef3b472e8689e1b17ea75e9114afa5aa8}"
+export RPC="${RPC:-wss://rpc.proteus-agent.com}"
+export MODEL="${MODEL:-Qwen/Qwen2.5-3B-Instruct-AWQ}"
+export GPU_UTIL="${GPU_UTIL:-0.90}"
+export WALLET_NAME="${WALLET_NAME:-miner}"
+export WALLET_HOTKEY="${WALLET_HOTKEY:-expert1}"
+export RELAY_EXTERNAL=""
+
+RELAY="${RELAY:-0}"
+
+if [ "$RELAY" = "1" ]; then
+  HK="$HOME/.bittensor/wallets/$WALLET_NAME/hotkeys/$WALLET_HOTKEY"
+  if [ ! -f "$HK" ]; then
+    echo "hotkey not found: $HK"
+    echo "create your wallet first (see README step 1)."
+    exit 1
+  fi
+  # ss58 of the hotkey, then a stable public port (FNV-1a into 20000-25000),
+  # the SAME scheme the desktop app uses so a hotkey always maps to one port.
+  SS58="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['ss58Address'])" "$HK")"
+  RELAY_PORT="$(python3 -c "
+h=2166136261
+for b in '$SS58'.encode():
+    h ^= b; h = (h*16777619) & 0xffffffff
+print(20000 + h % 5000)")"
+  export RELAY_PORT
+  export RELAY_EXTERNAL="--axon.external_ip $RELAY_HOST --axon.external_port $RELAY_PORT"
+  echo "relay ON  ->  axon published at $RELAY_HOST:$RELAY_PORT  (hotkey $SS58)"
+  docker compose --profile relay up -d
+  echo "verify from another machine:  nc -zv $RELAY_HOST $RELAY_PORT"
+else
+  echo "relay OFF ->  serving axon directly on this host:8091 (needs a public IP)"
+  docker compose up -d
+fi
+
+echo "logs:  docker compose logs -f miner"

@@ -1,0 +1,14 @@
+# frpc reverse tunnel: exposes the local axon (proteus-miner:8091) on the public
+# relay as RELAY_HOST:RELAY_PORT, so validators can reach a miner that sits
+# behind CGNAT/NAT. Values come from the environment (set by run.sh).
+serverAddr = "{{ .Envs.RELAY_HOST }}"
+serverPort = 7000
+auth.method = "token"
+auth.token = "{{ .Envs.RELAY_TOKEN }}"
+
+[[proxies]]
+name = "axon"
+type = "tcp"
+localIP = "proteus-miner"
+localPort = 8091
+remotePort = {{ .Envs.RELAY_PORT }}

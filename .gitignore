@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.env
+.venv/
+venv/
+wallets/
+*.pt
+*.bin
+*.safetensors
+.DS_Store
+.idea/
+.vscode/
+.claude/
+
+# Router-side reference data, loaded at runtime from GOLDEN_SET_PATH.
+golden_set*
+
+# Local code index.
+.codegraph/

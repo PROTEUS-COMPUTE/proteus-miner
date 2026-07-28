@@ -1,0 +1,29 @@
+# Docker does not read .gitignore. This file is what keeps local material out of
+# the image layers that `COPY . .` (Dockerfile:20) publishes to GHCR.
+
+# Router-side reference data. Belongs on the router machine, not in an image.
+golden_set*
+
+# Git metadata: credentials live in .git/config, and history keeps everything.
+.git
+.github
+.gitattributes
+
+# Keys, and anything that holds one.
+wallets/
+.env
+*.pem
+*.key
+
+# Build noise and local virtualenvs, which would only bloat the layer.
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.DS_Store
+.idea/
+.vscode/
+.claude/

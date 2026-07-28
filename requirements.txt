@@ -1,0 +1,11 @@
+# PROTEUS miner and validator neurons.
+# Nvidia GPU (CUDA) required to mine - there is no CPU mining.
+bittensor==8.5.1
+bittensor-cli==8.4.4  # pin: pre-dTAO btcli. Newer btcli pulls async-substrate-interface (cyscale), which conflicts with bittensor 8.5.1's scalecodec and refuses to load.
+uvicorn<0.34        # pin: newer uvicorn breaks bittensor's nested-asyncio patch
+torch
+numpy
+sentence-transformers  # embeddings for reward scoring (runs on CPU, router-side)
+setuptools>=77.0.3,<81  # pin: sentence-transformers pulls torch which needs setuptools>=77, but setuptools>=81 removes pkg_resources (breaks bittensor via munch)
+# The inference layer runs on vLLM (Nvidia / CUDA).
+# Install the vllm build matching your CUDA version at launch.
