@@ -7,7 +7,11 @@ auth.method = "token"
 auth.token = "{{ .Envs.RELAY_TOKEN }}"
 
 [[proxies]]
-name = "axon"
+# Namespaced per miner: frp scopes proxy names to the SERVER, not to the client,
+# so a fixed name means the first tunnel online owns it and every other miner is
+# refused with "proxy already exists". RELAY_PORT is derived from the hotkey and
+# is already unique, so it doubles as the namespace.
+name = "axon-{{ .Envs.RELAY_PORT }}"
 type = "tcp"
 localIP = "proteus-miner"
 localPort = 8091
