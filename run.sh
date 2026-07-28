@@ -22,6 +22,24 @@ export RELAY_EXTERNAL=""
 
 RELAY="${RELAY:-0}"
 
+# Get the miner image without depending on the registry being reachable.
+# `docker compose up` aborts on a failed pull, which would stop a miner dead for
+# a reason that has nothing to do with their machine. The repository carries the
+# Dockerfile, so building locally is always an option and produces the same
+# image; it just costs a couple of minutes the first time.
+ensure_miner_image() {
+  if docker image inspect ghcr.io/proteus-compute/proteus-miner:latest >/dev/null 2>&1; then
+    return
+  fi
+  echo "fetching the miner image..."
+  if docker compose pull miner >/dev/null 2>&1; then
+    echo "  pulled from ghcr.io"
+  else
+    echo "  registry unreachable, building it here instead (a few minutes, once)"
+    docker compose build miner
+  fi
+}
+
 if [ "$RELAY" = "1" ]; then
   HK="$HOME/.bittensor/wallets/$WALLET_NAME/hotkeys/$WALLET_HOTKEY"
   if [ ! -f "$HK" ]; then
@@ -40,10 +58,12 @@ print(20000 + h % 5000)")"
   export RELAY_PORT
   export RELAY_EXTERNAL="--axon.external_ip $RELAY_HOST --axon.external_port $RELAY_PORT"
   echo "relay ON  ->  axon published at $RELAY_HOST:$RELAY_PORT  (hotkey $SS58)"
+  ensure_miner_image
   docker compose --profile relay up -d
   echo "verify from another machine:  nc -zv $RELAY_HOST $RELAY_PORT"
 else
   echo "relay OFF ->  serving axon directly on this host:8091 (needs a public IP)"
+  ensure_miner_image
   docker compose up -d
 fi
 

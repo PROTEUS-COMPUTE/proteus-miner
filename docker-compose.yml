@@ -31,6 +31,13 @@ services:
 
   miner:
     image: ghcr.io/proteus-compute/proteus-miner:latest
+    # Building from this checkout is always possible, so a registry that is
+    # unreachable, rate limited or not yet published never blocks a miner:
+    # `docker compose build miner` produces the same image locally. run.sh
+    # falls back to it automatically when the pull fails.
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: proteus-miner
     restart: unless-stopped
     depends_on: [vllm]
