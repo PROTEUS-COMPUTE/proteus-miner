@@ -56,13 +56,29 @@ First check that your miner can reach the chain:
 btcli subnets list --network wss://rpc.proteus-agent.com
 ```
 
-Then register your hotkey on the subnet:
+Then register your hotkey on the subnet. There are two ways in, and if you are
+arriving with an empty wallet you want the first one.
+
+**Proof of work (free).** You pay with compute instead of $PRTS, so it works from
+a wallet with a zero balance. This is the normal path for a new miner.
+
+```bash
+btcli subnets pow-register --netuid 1 \
+  --network wss://rpc.proteus-agent.com \
+  --wallet.name miner --wallet.hotkey expert1
+```
+
+**Recycle (costs $PRTS).** Instant, but it burns a small amount from your
+coldkey, currently around 0.02 $PRTS. Only useful once you already hold some.
 
 ```bash
 btcli subnets register --netuid 1 \
   --network wss://rpc.proteus-agent.com \
   --wallet.name miner --wallet.hotkey expert1
 ```
+
+Either way the transaction fee itself is zero. The Windows app uses proof of work
+automatically, nothing to choose.
 
 ## 3. Run your expert (Docker, recommended)
 
