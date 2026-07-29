@@ -103,10 +103,24 @@ RELAY=1 ./run.sh
 ```
 
 The launcher derives a stable public port from your hotkey and prints it, e.g.
-`axon published at 89.116.27.24:2xxxx`. Verify from another machine with
-`nc -zv 89.116.27.24 <port>`. Not sure whether you need it? If `./run.sh` works
-and the dashboard shows your expert being queried, you don't. If your box is
-behind CGNAT, use `RELAY=1`.
+`axon published at 89.116.27.24:2xxxx`.
+
+To check that you are really reachable, ask your axon to answer:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' --max-time 8 \
+  -X POST http://89.116.27.24:<your-port>/Synapse -d '{}'
+```
+
+`401` is the answer you want: your axon is alive and correctly refusing an
+unsigned request. `000` means the port accepts TCP but nothing is behind it,
+so the router cannot reach you and you will not be scored.
+
+Do **not** use `nc -zv` for this. It only proves the relay is listening, which
+stays true even when your own node is down.
+
+Not sure whether you need the relay? If `./run.sh` works and the dashboard shows
+your expert being queried, you don't. If your box is behind CGNAT, use `RELAY=1`.
 
 Logs: `docker compose logs -f miner`. Stop: `docker compose down`.
 

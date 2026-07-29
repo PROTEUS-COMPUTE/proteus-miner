@@ -60,7 +60,11 @@ print(20000 + h % 5000)")"
   echo "relay ON  ->  axon published at $RELAY_HOST:$RELAY_PORT  (hotkey $SS58)"
   ensure_miner_image
   docker compose --profile relay up -d
-  echo "verify from another machine:  nc -zv $RELAY_HOST $RELAY_PORT"
+  # nc only proves the relay is listening, which stays true with a dead axon
+  # behind it. Asking the axon to answer is the check that means something: 401
+  # is a live axon refusing an unsigned request, 000 is an empty tunnel.
+  echo "verify from another machine (401 = reachable, 000 = empty tunnel):"
+  echo "  curl -s -o /dev/null -w '%{http_code}\\n' --max-time 8 -X POST http://$RELAY_HOST:$RELAY_PORT/Synapse -d '{}'"
 else
   echo "relay OFF ->  serving axon directly on this host:8091 (needs a public IP)"
   ensure_miner_image

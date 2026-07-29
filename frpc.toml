@@ -16,3 +16,12 @@ type = "tcp"
 localIP = "proteus-miner"
 localPort = 8091
 remotePort = {{ .Envs.RELAY_PORT }}
+
+# Without this, frps opens the public port the moment frpc registers and keeps it
+# open whatever happens behind: a dead axon still answers TCP, so `nc -zv` says
+# "reachable" while the router gets nothing. The health check makes frpc withdraw
+# the tunnel when the local axon stops answering, so the port state tells the truth.
+healthCheck.type = "tcp"
+healthCheck.timeoutSeconds = 3
+healthCheck.maxFailed = 3
+healthCheck.intervalSeconds = 10
