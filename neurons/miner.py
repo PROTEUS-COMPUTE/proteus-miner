@@ -18,6 +18,8 @@
 
 import time
 import typing
+import urllib.error
+import urllib.request
 
 import bittensor as bt
 
@@ -110,8 +112,47 @@ class Miner(BaseMinerNeuron):
         return priority
 
 
+def _self_check(miner) -> None:
+    """Ask our own published axon to answer, from the outside.
+
+    Every silent failure this project has hit looked healthy from the inside: the
+    process is up, vLLM serves, the tunnel is registered, and the node is simply
+    unreachable. The address published on-chain is the only one the router will
+    ever use, so it is the only one worth testing. A live axon rejects an unsigned
+    request with 401; anything else means no request will ever arrive.
+    """
+    ip = getattr(miner.axon, "external_ip", None)
+    port = getattr(miner.axon, "external_port", None)
+    if not ip or not port:
+        return
+    url = f"http://{ip}:{port}/InferenceSynapse"
+    try:
+        req = urllib.request.Request(url, data=b"{}", method="POST")
+        with urllib.request.urlopen(req, timeout=8) as r:
+            code = r.status
+    except urllib.error.HTTPError as e:
+        code = e.code  # 401/403 mean something answered, which is what we want
+    except Exception as e:
+        bt.logging.error(
+            f"UNREACHABLE: nothing answers at {ip}:{port} ({type(e).__name__}). "
+            f"This is the address the router uses, so you will score zero. "
+            f"Behind NAT? use RELAY=1 ./run.sh. Already relaying? the tunnel is up "
+            f"but your axon is not answering behind it."
+        )
+        return
+    if code in (401, 403):
+        bt.logging.info(f"reachable: axon answers at {ip}:{port}")
+    else:
+        bt.logging.warning(f"axon at {ip}:{port} answered {code}, expected 401")
+
+
 if __name__ == "__main__":
     with Miner() as miner:
+        step = 0
         while True:
+            # ponytail: no scheduler, a counter on the existing loop is enough.
+            if step % 60 == 0:  # at start, then every ~5 minutes
+                _self_check(miner)
             bt.logging.info(f"Miner running... {time.time()}")
+            step += 1
             time.sleep(5)
