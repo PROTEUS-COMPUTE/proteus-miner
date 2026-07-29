@@ -125,13 +125,16 @@ def _self_check(miner) -> None:
     port = getattr(miner.axon, "external_port", None)
     if not ip or not port:
         return
-    url = f"http://{ip}:{port}/InferenceSynapse"
+    # Deliberately not a real synapse route: the axon rejects it at the routing
+    # layer instead of trying to parse Bittensor headers we are not sending, which
+    # would raise SynapseParsingError in the miner's own logs for no reason.
+    url = f"http://{ip}:{port}/proteus-reachability-probe"
     try:
         req = urllib.request.Request(url, data=b"{}", method="POST")
         with urllib.request.urlopen(req, timeout=8) as r:
             code = r.status
     except urllib.error.HTTPError as e:
-        code = e.code  # 401/403 mean something answered, which is what we want
+        code = e.code
     except Exception as e:
         bt.logging.error(
             f"UNREACHABLE: nothing answers at {ip}:{port} ({type(e).__name__}). "
@@ -140,10 +143,9 @@ def _self_check(miner) -> None:
             f"but your axon is not answering behind it."
         )
         return
-    if code in (401, 403):
-        bt.logging.info(f"reachable: axon answers at {ip}:{port}")
-    else:
-        bt.logging.warning(f"axon at {ip}:{port} answered {code}, expected 401")
+    # Any HTTP status proves something is listening and talking, which is the whole
+    # question. Which status it is says nothing about reachability.
+    bt.logging.info(f"reachable: axon answers at {ip}:{port} (HTTP {code})")
 
 
 if __name__ == "__main__":
