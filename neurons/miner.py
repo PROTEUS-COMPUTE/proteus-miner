@@ -16,10 +16,9 @@
 # CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
+import socket
 import time
 import typing
-import urllib.error
-import urllib.request
 
 import bittensor as bt
 
@@ -125,27 +124,23 @@ def _self_check(miner) -> None:
     port = getattr(miner.axon, "external_port", None)
     if not ip or not port:
         return
-    # Deliberately not a real synapse route: the axon rejects it at the routing
-    # layer instead of trying to parse Bittensor headers we are not sending, which
-    # would raise SynapseParsingError in the miner's own logs for no reason.
-    url = f"http://{ip}:{port}/proteus-reachability-probe"
+    # TCP only, no HTTP. The axon treats any path as a synapse name, so probing it
+    # over HTTP logs an error in the miner's own logs whatever path we pick. A plain
+    # connect is enough now that frpc health-checks the tunnel: the relay closes the
+    # public port when the local axon stops answering, so an open port means a live
+    # axon rather than just a live tunnel.
     try:
-        req = urllib.request.Request(url, data=b"{}", method="POST")
-        with urllib.request.urlopen(req, timeout=8) as r:
-            code = r.status
-    except urllib.error.HTTPError as e:
-        code = e.code
+        with socket.create_connection((ip, port), timeout=8):
+            pass
     except Exception as e:
         bt.logging.error(
-            f"UNREACHABLE: nothing answers at {ip}:{port} ({type(e).__name__}). "
-            f"This is the address the router uses, so you will score zero. "
-            f"Behind NAT? use RELAY=1 ./run.sh. Already relaying? the tunnel is up "
-            f"but your axon is not answering behind it."
+            f"UNREACHABLE: nothing accepts connections at {ip}:{port} "
+            f"({type(e).__name__}). This is the address the router uses, so you "
+            f"will score zero. Behind NAT? use RELAY=1 ./run.sh. Already relaying? "
+            f"the tunnel is up but your axon is not answering behind it."
         )
         return
-    # Any HTTP status proves something is listening and talking, which is the whole
-    # question. Which status it is says nothing about reachability.
-    bt.logging.info(f"reachable: axon answers at {ip}:{port} (HTTP {code})")
+    bt.logging.info(f"reachable: {ip}:{port} accepts connections")
 
 
 if __name__ == "__main__":
