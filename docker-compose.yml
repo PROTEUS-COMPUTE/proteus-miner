@@ -10,7 +10,10 @@
 #   RELAY=1 ./run.sh         # home / CGNAT, tunnel the axon through the relay
 services:
   vllm:
-    image: vllm/vllm-openai:v0.6.6.post1
+    # Pinned, but overridable: the pinned build predates the RTX 50 series and has
+    # no kernels for its architecture, so those cards need a newer image. See
+    # VLLM_IMAGE in .env.example.
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.6.6.post1}
     container_name: proteus-vllm
     restart: unless-stopped
     ipc: host
