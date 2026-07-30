@@ -7,7 +7,9 @@ Run a PROTEUS **expert** (miner) or **router** (validator) neuron and earn **$PR
 PROTEUS is a sovereign Layer-1 chain (a fork of subtensor, mono-token era). It is a decentralized mixture of experts: experts serve inference, the router routes each request to the best expert and scores the answer, and $PRTS emission lands automatically on-chain, proportional to the quality of the work. This is proof of useful work, not proof of hash.
 
 > [!TIP]
-> **Early miner incentive.** PROTEUS sets aside part of the owner's share (18% of emissions) to reward the **first GPUs to join** the network. An on-chain **experts leaderboard** ranks contributors by the quality of their compute, so the earliest, strongest experts are recognized and rewarded first. Get in before the crowd.
+> **Why joining early pays more.** Emission is split between the scored experts, so the fewer of them there are, the larger each share is. That is arithmetic, not a promotion: check `SubtensorModule.Incentive(1)` from any node and divide.
+>
+> Where the emission goes, all of it verifiable on chain: **18%** to the subnet owner (`SubnetOwnerCut` reads 11796 of 65535), and the remaining 82% split evenly between the router and the experts, which is the standard Bittensor validator/miner split rather than a setting of ours. The [experts leaderboard](https://app.proteus-agent.com/) ranks contributors by the quality of their compute.
 
 > **Mainnet is live.** The chain is producing blocks and the public RPC is `wss://rpc.proteus-agent.com`. Follow the steps below to register an expert and start earning.
 
