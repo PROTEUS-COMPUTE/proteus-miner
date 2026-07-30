@@ -28,6 +28,10 @@ services:
       # Text-only workload. The multi-modal cache otherwise reserves host RAM we
       # will never use, which matters when several stacks share one machine.
       VLLM_MM_INPUT_CACHE_GIB: "0"
+      # Only read when running under WSL2, where vLLM leaves pinned host memory
+      # off by default and its V2 GPU runner then refuses to start ("UVA is not
+      # available"). No effect on native Linux.
+      VLLM_WSL2_ENABLE_PIN_MEMORY: "1"
     command: >
       --model ${MODEL:-Qwen/Qwen2.5-3B-Instruct-AWQ}
       --host 0.0.0.0 --port 8000
