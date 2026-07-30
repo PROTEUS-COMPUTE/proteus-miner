@@ -190,13 +190,31 @@ Add PROTEUS as a custom miner, then create a flight sheet:
 | Pass | leave empty |
 | Extra config arguments | see below |
 
+Most rigs need two lines and nothing else. Paste this as is:
+
 ```
-RELAY=1            # tunnel each axon out, required behind CGNAT
-GPUS=0,1,2         # cards to use, default every card
-HOTKEY_PREFIX=expert   # card N uses hotkey <prefix><N+1>
-MAX_CARDS=4        # cap regardless of what fits
-MODEL=<hf-id>      # force one model, default is sized per card
+RELAY=1
+HOTKEY_PREFIX=expert
 ```
+
+`RELAY=1` tunnels each axon out and is required behind CGNAT. `HOTKEY_PREFIX`
+names the hotkeys: the first card takes `expert1`, the second `expert2`, and so
+on.
+
+Everything else is optional, and leaving it out is usually the better answer.
+**Do not paste the table below**, add a line only if you need what it does:
+
+| Line | Add it when |
+|---|---|
+| `GPUS=0,1,2` | you want specific cards. Default: every card. |
+| `MAX_CARDS=4` | you want a hard cap whatever fits. Default: as many as host RAM allows. |
+| `MODEL=Qwen/Qwen2.5-7B-Instruct-AWQ` | you want one model on every card. Default, and the better one on a mixed rig: each card is sized from its own VRAM. |
+
+> [!WARNING]
+> A `MODEL` line must carry a real Hugging Face id. Copying a placeholder such
+> as `<hf-id>` out of a doc hands it straight to vLLM, which cannot load it. The
+> launcher now refuses it and says so, but the simplest fix is to leave the line
+> out entirely.
 
 Throughput is reported per card in tokens/s, under the H/s label the dashboard
 uses. `Accepted / rejected` is repurposed as reachable / unreachable cards: a card

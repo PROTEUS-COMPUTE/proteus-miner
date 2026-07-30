@@ -35,7 +35,25 @@ command -v docker >/dev/null || die "docker not found. On Hiveon see the README,
 docker compose version >/dev/null 2>&1 || die "docker compose v2 not found (the 'docker-compose' v1 binary will not do)."
 command -v nvidia-smi >/dev/null || die "nvidia-smi not found. Install the NVIDIA driver first."
 
-if ! docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi -L >/dev/null 2>&1; then
+# A flight sheet is copied from the docs, so the docs' placeholder gets copied
+# with it. Caught here rather than handed to vLLM, which would fail much later
+# with a message about a model nobody meant to ask for.
+case "${MODEL_OVERRIDE:-}" in
+  *'<'*|*'>'*) die "MODEL is still the documentation placeholder (${MODEL_OVERRIDE}). Put a real Hugging Face id such as Qwen/Qwen2.5-7B-Instruct-AWQ, or remove the MODEL line entirely and each card is sized from its own VRAM." ;;
+esac
+
+# Pull first, and SAY SO. This image is a few hundred MB and is absent on a fresh
+# Hiveon host, so folding the download into the check below (whose output has to
+# be silenced, it is a probe) left the operator staring at a frozen screen for
+# minutes with no way to tell a slow download from a hang.
+CUDA_PROBE=nvidia/cuda:12.4.0-base-ubuntu22.04
+if ! docker image inspect "$CUDA_PROBE" >/dev/null 2>&1; then
+  echo "gpu check: downloading $CUDA_PROBE (a few hundred MB, once)"
+  docker pull "$CUDA_PROBE" || die "cannot download $CUDA_PROBE. Check the network and the disk."
+fi
+
+echo "gpu check: asking docker for the cards..."
+if ! docker run --rm --gpus all "$CUDA_PROBE" nvidia-smi -L >/dev/null 2>&1; then
   die "docker cannot reach the GPUs. Install nvidia-container-toolkit and run: nvidia-ctk runtime configure --runtime=docker && systemctl restart docker"
 fi
 
@@ -64,6 +82,7 @@ model_for_vram() {
   local mb="$1"
   [ "$mb" -lt 7000 ] && { echo ""; return; }
   if [ -n "${MODEL_OVERRIDE:-}" ]; then echo "$MODEL_OVERRIDE"; return; fi
+  # (a MODEL still carrying the doc placeholder is rejected in the preflight)
   if   [ "$mb" -ge 22000 ]; then echo "Qwen/Qwen2.5-14B-Instruct-AWQ"
   elif [ "$mb" -ge 15000 ]; then echo "Qwen/Qwen2.5-7B-Instruct-AWQ"
   else echo "Qwen/Qwen2.5-3B-Instruct-AWQ"; fi
