@@ -141,6 +141,115 @@ path above, or publish a reachable endpoint yourself with
 
 From there the router queries your expert, scores its answers, and $PRTS emission lands on your hotkey every tempo. Track your expert on the dashboard at https://proteus-agent.com.
 
+## 4. Multi-GPU hosts and mining rigs
+
+<!-- Drop the official HiveOS mark at docs/img/hiveos.png and uncomment:
+<img src="docs/img/hiveos.png" alt="HiveOS" height="28" align="left" hspace="12">
+-->
+
+**One GPU is one expert.** Each card runs its own vLLM and its own neuron, under
+its own hotkey, and therefore holds its own uid and earns its own share of the
+emission. A single miner spread across a rig would earn one share; eight cards
+running eight stacks earn eight.
+
+`rig.sh` starts one stack per usable card:
+
+```bash
+./rig.sh --plan           # inspect the host, print the plan, start nothing
+./rig.sh                  # public IP
+RELAY=1 ./rig.sh          # behind CGNAT
+GPUS=0,2,5 ./rig.sh       # a subset
+./rig.sh --down           # stop every stack
+```
+
+### How many cards will actually start
+
+Host RAM is the binding constraint on a rig, not VRAM. A containerised vLLM holds
+several GB of system memory on top of the weights it puts in VRAM, and the exact
+figure depends on the image, the model and the machine, so it cannot be assumed.
+
+`rig.sh` measures it instead. The first stack is started alone; once vLLM answers
+`/health`, its real resident memory on this host is measured, and that number
+decides how many further cards can be fed. A card that would not fit is not
+started, and the reason is printed. Nothing is launched on a promise.
+
+```
+09:14:02  host        16 cores, 61440 MB RAM available, 780 GB free for images
+09:14:02  gpus        6 selected
+            [0] GeForce RTX 4070 SUPER        12282 MB  Qwen/Qwen2.5-7B-Instruct-AWQ
+            [1] GeForce RTX 4070 SUPER        12282 MB  Qwen/Qwen2.5-7B-Instruct-AWQ
+            ...
+09:14:03  gpu 0       RTX 4070 SUPER, Qwen/Qwen2.5-7B-Instruct-AWQ, hotkey expert1, axon 89.116.27.24:21344
+09:14:03  gpu 0       waiting for vLLM to load the model
+09:17:41  gpu 0       ready, holding 4118 MB of host RAM
+...
+09:31:08  started     6 stack(s), skipped 0
+09:31:08  footprint   ~4210 MB host RAM per stack, measured on this host
+09:31:08  ram left    35832 MB
+```
+
+A card is skipped, never silently dropped, when it has under 8 GB of VRAM, when
+its hotkey does not exist, or when the remaining RAM cannot cover another stack.
+
+### What it configures for you
+
+| | |
+|---|---|
+| model | chosen per card from its VRAM: 3B under 15 GB, 7B under 22 GB, 14B above |
+| vLLM image | the build carrying kernels for that card, including RTX 50-series |
+| GPU pinning | `device_ids` per stack, so stacks never contend for a card |
+| hotkey | `expert<N+1>` for GPU `N`, override with `WALLET_HOTKEY_PREFIX` |
+| axon port | `8091 + N`, and a distinct relay port derived from each hotkey |
+| model cache | one shared Docker volume, so the weights are downloaded once |
+| memory | eager mode and no swap reservation, which is what keeps a stack near 4 GB instead of 16 |
+
+### Preparing a HiveOS host
+
+HiveOS is Debian based, but it ships neither Docker nor the container toolkit:
+
+```bash
+apt update && apt install -y docker.io
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey \
+  | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list \
+  | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
+  > /etc/apt/sources.list.d/nvidia-container-toolkit.list
+apt update && apt install -y nvidia-container-toolkit
+nvidia-ctk runtime configure --runtime=docker && systemctl restart docker
+```
+
+**Do not let any guide update your NVIDIA driver.** HiveOS manages its own, and
+replacing it breaks the rest of the rig. The toolkit works with the driver already
+installed.
+
+Two host limits decide whether a rig is worth it, and both are printed by
+`./rig.sh --plan` before anything is downloaded:
+
+- **RAM.** Rigs are commonly built with 4-8 GB for eight cards, which is enough
+  for one or two stacks, not eight. This is the usual reason a rig serves fewer
+  cards than it holds.
+- **Disk.** Rigs often boot from a 32-64 GB drive. The vLLM image alone is several
+  GB. The model cache is shared between stacks, so it is paid once, not per card.
+
+PCIe risers are not a concern here. Weights are loaded once and inference stays on
+the card, so x1 links cost startup time and nothing after that.
+
+### Hotkeys
+
+One hotkey per card, all under the same coldkey:
+
+```bash
+for i in 1 2 3 4 5 6; do
+  btcli wallet new-hotkey --wallet.name miner --wallet.hotkey expert$i
+  btcli subnets pow-register --netuid 1 --network wss://rpc.proteus-agent.com \
+    --wallet.name miner --wallet.hotkey expert$i
+done
+```
+
+Registration is rate limited on-chain to twelve per 360-block interval, roughly 72
+minutes. Past that the chain returns `Custom error: 5` and you retry in the next
+interval.
+
 ## Run a router (validator)
 
 ```bash

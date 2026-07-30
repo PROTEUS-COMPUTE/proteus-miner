@@ -22,6 +22,21 @@ export RELAY_EXTERNAL=""
 
 RELAY="${RELAY:-0}"
 
+# Single-GPU host: card 0, the default axon port. rig.sh overrides both per card.
+export GPU_ID="${GPU_ID:-0}"
+export AXON_PORT="${AXON_PORT:-8091}"
+
+# Containers used to be named without a card suffix. After an update compose
+# creates the suffixed ones and leaves the old pair running, still holding the
+# GPU and the axon port, which looks exactly like a node that starts but is never
+# queried. Retire them first.
+for legacy in proteus-vllm proteus-miner proteus-frpc; do
+  if [ -n "$(docker ps -aq -f "name=^${legacy}$" 2>/dev/null)" ]; then
+    echo "removing pre-update container $legacy"
+    docker rm -f "$legacy" >/dev/null 2>&1
+  fi
+done
+
 # Get the miner image without depending on the registry being reachable.
 # `docker compose up` aborts on a failed pull, which would stop a miner dead for
 # a reason that has nothing to do with their machine. The repository carries the
