@@ -57,13 +57,16 @@ done
 mem_available_mb() { awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo; }
 disk_free_gb()     { df -BG --output=avail /var/lib/docker 2>/dev/null | tail -1 | tr -dc '0-9'; }
 
-# A card runs the largest model its VRAM can hold with headroom for the KV cache.
+# A card runs the largest model its VRAM can hold with headroom for the KV cache,
+# unless MODEL_OVERRIDE forces one on every card. The override still respects the
+# 8 GB floor: a card that cannot serve anything is skipped either way.
 model_for_vram() {
   local mb="$1"
+  [ "$mb" -lt 7000 ] && { echo ""; return; }
+  if [ -n "${MODEL_OVERRIDE:-}" ]; then echo "$MODEL_OVERRIDE"; return; fi
   if   [ "$mb" -ge 22000 ]; then echo "Qwen/Qwen2.5-14B-Instruct-AWQ"
   elif [ "$mb" -ge 15000 ]; then echo "Qwen/Qwen2.5-7B-Instruct-AWQ"
-  elif [ "$mb" -ge 7000  ]; then echo "Qwen/Qwen2.5-3B-Instruct-AWQ"
-  else echo ""; fi
+  else echo "Qwen/Qwen2.5-3B-Instruct-AWQ"; fi
 }
 
 # The pinned vLLM build predates the RTX 50 series and carries no sm_120 kernels.
@@ -160,6 +163,11 @@ for i in "${!GPU_IDX[@]}"; do
 
   if [ -z "$model" ]; then
     warn "gpu $idx     skipped, ${vram} MB VRAM is below the 8 GB minimum"
+    skipped=$((skipped + 1)); continue
+  fi
+
+  if [ "${MAX_CARDS:-0}" -gt 0 ] && [ "$started" -ge "${MAX_CARDS}" ]; then
+    warn "gpu $idx     skipped, MAX_CARDS=${MAX_CARDS} reached"
     skipped=$((skipped + 1)); continue
   fi
 
