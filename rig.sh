@@ -31,7 +31,7 @@ die()  { printf '%s  ERROR %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------- preflight ---
 
-command -v docker >/dev/null || die "docker not found. On HiveOS see the README, it is not installed by default."
+command -v docker >/dev/null || die "docker not found. On Hiveon see the README, it is not installed by default."
 docker compose version >/dev/null 2>&1 || die "docker compose v2 not found (the 'docker-compose' v1 binary will not do)."
 command -v nvidia-smi >/dev/null || die "nvidia-smi not found. Install the NVIDIA driver first."
 

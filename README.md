@@ -23,7 +23,7 @@ PROTEUS is a sovereign Layer-1 chain (a fork of subtensor, mono-token era). It i
 - [4. Multi-GPU hosts and mining rigs](#4-multi-gpu-hosts-and-mining-rigs)
   - [How many cards will actually start](#how-many-cards-will-actually-start)
   - [What it configures for you](#what-it-configures-for-you)
-  - [Preparing a HiveOS host](#preparing-a-hiveos-host)
+  - [Preparing a Hiveon host](#preparing-a-hiveon-host)
   - [Hotkeys](#hotkeys)
 - [Run a router (validator)](#run-a-router-validator)
 - [Inference backend](#inference-backend)
@@ -162,7 +162,7 @@ From there the router queries your expert, scores its answers, and $PRTS emissio
 
 ## 4. Multi-GPU hosts and mining rigs
 
-<img src="docs/img/hiveos.png" alt="HiveOS" height="72" align="left" hspace="20" vspace="4">
+<img src="docs/img/hiveon.png" alt="Hiveon" height="72" align="left" hspace="20" vspace="4">
 
 **One GPU is one expert.** Each card runs its own vLLM and its own neuron, under
 its own hotkey, and therefore holds its own uid and earns its own share of the
@@ -222,9 +222,9 @@ its hotkey does not exist, or when the remaining RAM cannot cover another stack.
 | model cache | one shared Docker volume, so the weights are downloaded once |
 | memory | eager mode and no swap reservation, which is what keeps a stack near 4 GB instead of 16 |
 
-### Preparing a HiveOS host
+### Preparing a Hiveon host
 
-HiveOS is Debian based, but it ships neither Docker nor the container toolkit:
+Hiveon is Debian based, but it ships neither Docker nor the container toolkit:
 
 ```bash
 apt update && apt install -y docker.io
@@ -237,7 +237,7 @@ apt update && apt install -y nvidia-container-toolkit
 nvidia-ctk runtime configure --runtime=docker && systemctl restart docker
 ```
 
-**Do not let any guide update your NVIDIA driver.** HiveOS manages its own, and
+**Do not let any guide update your NVIDIA driver.** Hiveon manages its own, and
 replacing it breaks the rest of the rig. The toolkit works with the driver already
 installed.
 
