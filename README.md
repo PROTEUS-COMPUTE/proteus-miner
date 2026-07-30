@@ -174,6 +174,10 @@ spread across a rig would earn one share; eight cards earn eight.
 
 Add PROTEUS as a custom miner, then create a flight sheet:
 
+### ⛏️ Multi-GPU $PRTS mining
+
+<img src="docs/img/flight-sheet.png" alt="PROTEUS flight sheet" width="520">
+
 | Field | Value |
 |---|---|
 | Miner name | `proteus`, filled in from the installation URL |
