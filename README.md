@@ -11,6 +11,25 @@ PROTEUS is a sovereign Layer-1 chain (a fork of subtensor, mono-token era). It i
 
 > **Mainnet is live.** The chain is producing blocks and the public RPC is `wss://rpc.proteus-agent.com`. Follow the steps below to register an expert and start earning.
 
+## Contents
+
+- [Requirements](#requirements)
+- [Install](#install)
+- [1. Create a wallet](#1-create-a-wallet)
+- [2. Register on the network](#2-register-on-the-network)
+- [3. Run your expert (Docker, recommended)](#3-run-your-expert-docker-recommended)
+  - [Behind a home router / CGNAT](#behind-a-home-router--cgnat)
+- [3b. Run your expert (bare metal)](#3b-run-your-expert-bare-metal)
+- [4. Multi-GPU hosts and mining rigs](#4-multi-gpu-hosts-and-mining-rigs)
+  - [How many cards will actually start](#how-many-cards-will-actually-start)
+  - [What it configures for you](#what-it-configures-for-you)
+  - [Preparing a HiveOS host](#preparing-a-hiveos-host)
+  - [Hotkeys](#hotkeys)
+- [Run a router (validator)](#run-a-router-validator)
+- [Inference backend](#inference-backend)
+  - [Dev / smoke-test backend (ollama)](#dev--smoke-test-backend-ollama)
+- [License](#license)
+
 ## Requirements
 
 - **An Nvidia GPU with CUDA.** PROTEUS mining is GPU-only. There is no CPU mining: the task is heavy enough that only Nvidia GPUs are competitive.
@@ -143,14 +162,14 @@ From there the router queries your expert, scores its answers, and $PRTS emissio
 
 ## 4. Multi-GPU hosts and mining rigs
 
-<!-- Drop the official HiveOS mark at docs/img/hiveos.png and uncomment:
-<img src="docs/img/hiveos.png" alt="HiveOS" height="28" align="left" hspace="12">
--->
+<img src="docs/img/hiveos.png" alt="HiveOS" height="72" align="left" hspace="20" vspace="4">
 
 **One GPU is one expert.** Each card runs its own vLLM and its own neuron, under
 its own hotkey, and therefore holds its own uid and earns its own share of the
 emission. A single miner spread across a rig would earn one share; eight cards
 running eight stacks earn eight.
+
+<br clear="left">
 
 `rig.sh` starts one stack per usable card:
 
