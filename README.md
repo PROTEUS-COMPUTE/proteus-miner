@@ -176,7 +176,7 @@ Add PROTEUS as a custom miner, then create a flight sheet:
 
 | Field | Value |
 |---|---|
-| Installation URL | `https://github.com/PROTEUS-COMPUTE/proteus-miner/releases/latest/download/proteus-1.0.0.tar.gz` |
+| Installation URL | `https://github.com/PROTEUS-COMPUTE/proteus-miner/releases/download/hiveon-1.0.0/proteus-1.0.0.tar.gz` |
 | Hash algorithm | `inference` |
 | Wallet and worker template | your coldkey wallet name, e.g. `miner` |
 | Pool URL | `wss://rpc.proteus-agent.com` |
