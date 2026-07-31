@@ -16,6 +16,7 @@
 # CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
+import os
 import socket
 import time
 import typing
@@ -143,6 +144,90 @@ def _self_check(miner) -> None:
     bt.logging.info(f"reachable: {ip}:{port} accepts connections")
 
 
+# The router scores a late answer zero, so the deadline it enforces is the only
+# threshold worth measuring against.
+ROUTER_DEADLINE_MS = int(os.getenv("DEADLINE_MS", "9000"))
+# The probe's own ceiling, deliberately well above the deadline: the point is to
+# MEASURE a slow engine, not to time out on it. Timing out at the deadline would
+# report "produced nothing" for a box that merely needs a smaller model, and
+# those are two different repairs. Three times the deadline settles that question
+# and bounds how long an engine that accepts connections without ever answering
+# can hold this loop (the axon serves on its own thread, so nothing is dropped).
+PROBE_CEILING_MS = 30000
+PROBE_PROMPT = "In one short paragraph, explain what a GPU does."
+PROBE_MAX_TOKENS = 256
+
+
+def _inference_check(miner) -> None:
+    """Generate a real answer locally, and time it against the router's deadline.
+
+    `_self_check` above proves the axon accepts connections. It cannot prove the
+    node can answer: the axon rejects an unknown route instantly, without ever
+    reaching the engine. So a miner whose vLLM is dead passes the reachability
+    check and still scores zero, sees "running" everywhere, and has no way to
+    know. Measured on 2026-07-31: 65 registered miners were queried and answered
+    nothing, every one of them reachable.
+
+    This goes through `ExpertEngine.infer`, the same call the router's request
+    lands on, so what it measures is what the router will experience. One short
+    generation every five minutes is well under a percent of a serving card.
+    """
+    engine = getattr(miner, "engine", None)
+    if engine is None:
+        return
+    # infer() swallows backend errors and returns an empty completion, so a dead
+    # engine reports as "no answer" rather than taking the neuron down with it.
+    # Belt and braces anyway: this is a diagnostic, and a diagnostic that can
+    # crash the neuron would cost the operator the very earnings it exists to
+    # protect.
+    try:
+        out = engine.infer(
+            prompt=PROBE_PROMPT,
+            max_tokens=PROBE_MAX_TOKENS,
+            deadline_ms=PROBE_CEILING_MS,
+        )
+    except Exception as e:  # noqa: BLE001
+        bt.logging.warning(f"inference check could not run ({type(e).__name__})")
+        return
+    ms = out.get("latency_ms", 0.0)
+    tokens = out.get("tokens_generated", 0)
+
+    if not out.get("completion"):
+        # A model still loading is the normal reason at startup and can take
+        # minutes, so the first miss is a warning. A second one in a row is not
+        # a cold start any more.
+        streak = getattr(miner, "_infer_fail_streak", 0) + 1
+        miner._infer_fail_streak = streak
+        if streak == 1:
+            bt.logging.warning(
+                f"inference check: no answer after {ms / 1000:.0f}s. If you just "
+                f"started, the model is probably still loading and the next check "
+                f"in ~5 min will say so."
+            )
+        else:
+            bt.logging.error(
+                f"NOT SERVING: your engine produced nothing, {streak} checks in a "
+                f"row. The router reaches you and gets silence, so you score zero "
+                f"whatever else looks fine. Check that vLLM is up and holding the "
+                f"model: docker logs proteus-vllm --tail 30"
+            )
+        return
+
+    miner._infer_fail_streak = 0
+    if ms > ROUTER_DEADLINE_MS:
+        bt.logging.error(
+            f"TOO SLOW: {tokens} words in {ms / 1000:.1f}s, and the router stops "
+            f"waiting at {ROUTER_DEADLINE_MS / 1000:.0f}s. It reaches you and you "
+            f"answer, but always late, which scores the same as silence. A smaller "
+            f"model on this card is the usual fix."
+        )
+        return
+    bt.logging.info(
+        f"serving: {tokens} words in {ms / 1000:.1f}s "
+        f"(router deadline {ROUTER_DEADLINE_MS / 1000:.0f}s)"
+    )
+
+
 if __name__ == "__main__":
     with Miner() as miner:
         step = 0
@@ -150,6 +235,7 @@ if __name__ == "__main__":
             # ponytail: no scheduler, a counter on the existing loop is enough.
             if step % 60 == 0:  # at start, then every ~5 minutes
                 _self_check(miner)
+                _inference_check(miner)
             bt.logging.info(f"Miner running... {time.time()}")
             step += 1
             time.sleep(5)
