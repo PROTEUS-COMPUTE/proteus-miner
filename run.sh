@@ -44,6 +44,15 @@ done
 # image; it just costs a couple of minutes the first time.
 ensure_miner_image() {
   if docker image inspect ghcr.io/proteus-compute/proteus-miner:latest >/dev/null 2>&1; then
+    # Already here, so refresh it: fixes ship in this image and a miner that
+    # never re-pulls keeps whatever it downloaded the first day. A failed
+    # refresh is not a reason to stop: the local image still works.
+    echo "refreshing the miner image..."
+    if docker compose pull miner >/dev/null 2>&1; then
+      echo "  up to date"
+    else
+      echo "  registry unreachable, keeping the image already on this machine"
+    fi
     return
   fi
   echo "fetching the miner image..."

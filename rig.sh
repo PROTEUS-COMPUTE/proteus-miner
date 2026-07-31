@@ -124,6 +124,21 @@ fi
 
 # ------------------------------------------------------------------ launch ----
 
+# Refresh the miner image before starting anything. `docker compose up` reuses a
+# :latest tag that is already on disk without ever asking the registry, so a rig
+# could restart for weeks and keep the build it downloaded on day one. Every card
+# shares this image, so one pull covers the whole rig. A failed pull is not a
+# reason to stop: the local image still runs.
+MINER_IMAGE=ghcr.io/proteus-compute/proteus-miner:latest
+echo "miner image: refreshing $MINER_IMAGE"
+if docker pull "$MINER_IMAGE" >/dev/null 2>&1; then
+  echo "  up to date"
+else
+  docker image inspect "$MINER_IMAGE" >/dev/null 2>&1 \
+    && echo "  registry unreachable, keeping the image already on this machine" \
+    || die "cannot download $MINER_IMAGE and there is no local copy. Check the network."
+fi
+
 export RELAY_HOST="${RELAY_HOST:-89.116.27.24}"
 export RELAY_TOKEN="${RELAY_TOKEN:-0705c2dabde90ccef3b472e8689e1b17ea75e9114afa5aa8}"
 export RPC="${RPC:-wss://rpc.proteus-agent.com}"
