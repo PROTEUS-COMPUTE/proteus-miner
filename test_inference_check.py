@@ -37,16 +37,18 @@ import re
 import pathlib
 
 src = pathlib.Path(__file__).with_name("neurons").joinpath("miner.py").read_text()
-start = src.index("# The router scores a late answer zero")
+start = src.index("# The router states its deadline on every request it sends, and that")
 end = src.index('if __name__ == "__main__":')
 ns = {"os": __import__("os"), "bt": types.SimpleNamespace(logging=_Log)}
 exec(compile(src[start:end], "miner.py", "exec"), ns)  # noqa: S102
 _inference_check = ns["_inference_check"]
-DEADLINE = ns["ROUTER_DEADLINE_MS"]
+DEADLINE = 18000  # ce que la production annonce reellement
 
 
 class FakeMiner:
-    def __init__(self, completion, latency_ms, tokens=120):
+    def __init__(self, completion, latency_ms, tokens=120, deadline=DEADLINE):
+        # le routeur annonce son echeance a chaque requete: le mineur la retient
+        self.router_deadline_ms = deadline
         self.engine = types.SimpleNamespace(
             infer=lambda **kw: {
                 "completion": completion,
@@ -106,9 +108,25 @@ def test_one_good_answer_clears_the_streak():
     assert out[0][0] == "warning", out
 
 
-def test_probe_ceiling_is_above_the_router_deadline():
+def test_probe_ceiling_follows_the_announced_deadline():
     """Timing out at the deadline would make every slow miner look dead."""
-    assert ns["PROBE_CEILING_MS"] > DEADLINE * 2
+    m = FakeMiner("x", 1, deadline=18000)
+    assert ns["_probe_ceiling"](m) >= 18000 * 3
+    m2 = FakeMiner("x", 1, deadline=2000)
+    assert ns["_probe_ceiling"](m2) == 30000, "un plancher protege les tres petites echeances"
+
+
+def test_no_verdict_before_the_router_has_spoken():
+    """Sans requete recue, on ne connait pas l'echeance et on n'en invente pas.
+
+    C'est la faute du 2026-07-31: le defaut du code disait 9 s, la production
+    tournait a 18 s, et le controle annoncait TOO SLOW a des mineurs dans les
+    temps."""
+    m = FakeMiner("une vraie reponse", 12000, deadline=0)
+    out = run(m)
+    assert out[0][0] == "info", out
+    assert "no deadline" in out[0][1].lower(), out
+    assert "TOO SLOW" not in out[0][1]
 
 
 def test_a_missing_engine_never_raises():

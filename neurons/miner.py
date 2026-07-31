@@ -48,6 +48,11 @@ class Miner(BaseMinerNeuron):
         self, synapse: InferenceSynapse
     ) -> InferenceSynapse:
         """Handle an inference request from the router."""
+        # The router states its deadline on every request, so the self-check
+        # below never has to guess it. It was guessing, from an env default that
+        # did not match production, and told operators they were too slow when
+        # they were comfortably inside the real budget.
+        self.router_deadline_ms = synapse.deadline_ms
         result = self.engine.infer(
             prompt=synapse.prompt,
             max_tokens=synapse.max_tokens,
@@ -144,16 +149,24 @@ def _self_check(miner) -> None:
     bt.logging.info(f"reachable: {ip}:{port} accepts connections")
 
 
-# The router scores a late answer zero, so the deadline it enforces is the only
-# threshold worth measuring against.
-ROUTER_DEADLINE_MS = int(os.getenv("DEADLINE_MS", "9000"))
-# The probe's own ceiling, deliberately well above the deadline: the point is to
-# MEASURE a slow engine, not to time out on it. Timing out at the deadline would
-# report "produced nothing" for a box that merely needs a smaller model, and
-# those are two different repairs. Three times the deadline settles that question
-# and bounds how long an engine that accepts connections without ever answering
-# can hold this loop (the axon serves on its own thread, so nothing is dropped).
-PROBE_CEILING_MS = 30000
+# The router states its deadline on every request it sends, and that is the only
+# number worth measuring against. It is NOT guessed from a default here: the
+# default in the code and the value running in production were different, and a
+# check that invents the threshold tells an operator to shrink a model that was
+# never too big. Until a real request has arrived we simply do not claim one.
+# The probe's own ceiling, deliberately well above whatever the deadline is: the
+# point is to MEASURE a slow engine, not to time out on it. Timing out at the
+# deadline would report "produced nothing" for a box that merely needs a smaller
+# model, and those are two different repairs. It also bounds how long an engine
+# that accepts connections without ever answering can hold this loop (the axon
+# serves on its own thread, so no request is dropped meanwhile).
+PROBE_CEILING_FLOOR_MS = 30000
+
+
+def _probe_ceiling(miner) -> int:
+    """Three times the router's deadline, never under 30 s."""
+    known = getattr(miner, "router_deadline_ms", 0) or 0
+    return max(PROBE_CEILING_FLOOR_MS, int(known) * 3)
 PROBE_PROMPT = "In one short paragraph, explain what a GPU does."
 PROBE_MAX_TOKENS = 256
 
@@ -184,7 +197,7 @@ def _inference_check(miner) -> None:
         out = engine.infer(
             prompt=PROBE_PROMPT,
             max_tokens=PROBE_MAX_TOKENS,
-            deadline_ms=PROBE_CEILING_MS,
+            deadline_ms=_probe_ceiling(miner),
         )
     except Exception as e:  # noqa: BLE001
         bt.logging.warning(f"inference check could not run ({type(e).__name__})")
@@ -214,17 +227,26 @@ def _inference_check(miner) -> None:
         return
 
     miner._infer_fail_streak = 0
-    if ms > ROUTER_DEADLINE_MS:
+    deadline = getattr(miner, "router_deadline_ms", None)
+    if not deadline:
+        # No request has arrived yet, so we do not know the budget and will not
+        # invent one. The measurement is still worth printing.
+        bt.logging.info(
+            f"engine ok: {tokens} words in {ms / 1000:.1f}s. No request from the "
+            f"router yet, so no deadline to compare against."
+        )
+        return
+    if ms > deadline:
         bt.logging.error(
             f"TOO SLOW: {tokens} words in {ms / 1000:.1f}s, and the router stops "
-            f"waiting at {ROUTER_DEADLINE_MS / 1000:.0f}s. It reaches you and you "
-            f"answer, but always late, which scores the same as silence. A smaller "
-            f"model on this card is the usual fix."
+            f"waiting at {deadline / 1000:.0f}s. It reaches you and you answer, "
+            f"but always late, which scores the same as silence. A smaller model "
+            f"on this card is the usual fix."
         )
         return
     bt.logging.info(
         f"serving: {tokens} words in {ms / 1000:.1f}s "
-        f"(router deadline {ROUTER_DEADLINE_MS / 1000:.0f}s)"
+        f"(router deadline {deadline / 1000:.0f}s)"
     )
 
 
