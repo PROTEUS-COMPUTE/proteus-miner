@@ -32,7 +32,15 @@ die()  { printf '%s  ERROR %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; exit 1; }
 # ---------------------------------------------------------------- preflight ---
 
 command -v docker >/dev/null || die "docker not found. On Hiveon see the README, it is not installed by default."
-docker compose version >/dev/null 2>&1 || die "docker compose v2 not found (the 'docker-compose' v1 binary will not do)."
+# `apt install docker.io` gives the v1 python `docker-compose`, never the v2
+# plugin, so a host prepared from the README alone lands here. Carry the fix in
+# the message: an error that names the problem without naming the cure just
+# moves the search to Discord.
+docker compose version >/dev/null 2>&1 || die "docker compose v2 not found (the 'docker-compose' v1 binary will not do). Install the plugin, it works on any distro:
+  mkdir -p /usr/local/lib/docker/cli-plugins
+  curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+  chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+  docker compose version"
 command -v nvidia-smi >/dev/null || die "nvidia-smi not found. Install the NVIDIA driver first."
 
 # A flight sheet is copied from the docs, so the docs' placeholder gets copied
