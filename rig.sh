@@ -144,10 +144,28 @@ export RELAY_TOKEN="${RELAY_TOKEN:-0705c2dabde90ccef3b472e8689e1b17ea75e9114afa5
 export RPC="${RPC:-wss://rpc.proteus-agent.com}"
 export GPU_UTIL="${GPU_UTIL:-0.90}"
 export WALLET_NAME="${WALLET_NAME:-miner}"
-# Rigs are RAM-bound, not throughput-bound. Eager mode skips CUDA graph capture,
-# which is where a containerised vLLM balloons; the deadline the router enforces
-# leaves ample room for the slower path.
-export VLLM_EXTRA="${VLLM_EXTRA:---enforce-eager}"
+# Eager mode skips CUDA graph capture, which is where a containerised vLLM
+# balloons in HOST memory: measured at ~16 GB per instance during capture, which
+# is what stops a rig from starting its second card. Worth the throughput on a
+# rig; pure loss on a single card with memory to spare.
+#
+# It was applied to everyone on the reasoning that latency is a gate and not a
+# gradient, so slower costs nothing under the deadline. True, and the premise is
+# what fails: a card that needs 15 s for an answer the router stops waiting for
+# at 9 s does not lose a little throughput, it loses everything. Keep it where
+# the memory pressure is real, and hand the default back to vLLM otherwise.
+EAGER=""
+if [ "${#GPU_IDX[@]}" -gt 1 ]; then
+  EAGER="--enforce-eager"
+  log "vllm        eager mode, ${#GPU_IDX[@]} cards share this host's RAM"
+elif [ "$AVAIL_MB" -lt 20000 ]; then
+  # one card, but capture peaks around 16 GB and RESERVE_MB is held back on top
+  EAGER="--enforce-eager"
+  log "vllm        eager mode, only ${AVAIL_MB} MB host RAM free"
+else
+  log "vllm        cuda graphs on, single card with ${AVAIL_MB} MB host RAM free"
+fi
+export VLLM_EXTRA="${VLLM_EXTRA:-$EAGER}"
 export SWAP_SPACE="${SWAP_SPACE:-0}"
 export MAX_NUM_SEQS="${MAX_NUM_SEQS:-20}"
 
