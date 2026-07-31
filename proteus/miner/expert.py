@@ -119,7 +119,48 @@ class ExpertEngine:
         }
 
     def _vllm(self, prompt: str, max_tokens: int, timeout_s: float) -> str:
-        """vLLM on an Nvidia GPU (CUDA), via its OpenAI-compatible endpoint."""
+        """vLLM on an Nvidia GPU (CUDA), via its OpenAI-compatible endpoint.
+
+        The CHAT endpoint first, because it applies the model's own template and
+        that is what keeps a reasoning model's thinking out of the answer. Fed a
+        bare prompt through /v1/completions instead, Qwen3 answers and then keeps
+        going out loud: "Okay, so I need to explain what a GPU does. Let me start
+        by recalling what I know." Untagged, so `_strip_thinking` cannot catch it,
+        and the router scores the monologue as part of the answer. Observed on a
+        real miner on 2026-07-31, burning all 512 tokens every request.
+
+        Falls back to the raw completions call if chat is unavailable: a base
+        model with no chat template must keep working rather than go silent.
+        """
+        text = self._vllm_chat(prompt, max_tokens, timeout_s)
+        return self._vllm_completions(prompt, max_tokens, timeout_s) if text is None else text
+
+    def _vllm_chat(self, prompt: str, max_tokens: int, timeout_s: float):
+        """Returns the answer, or None if this model cannot be chatted with."""
+        req = urllib.request.Request(
+            f"{VLLM_HOST}/v1/chat/completions",
+            data=json.dumps({
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens,
+                "stream": False,
+                # Qwen3 and friends read this from their template. Templates that
+                # do not know it simply ignore it.
+                "chat_template_kwargs": {"enable_thinking": False},
+            }).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_s) as r:
+                data = json.loads(r.read())
+            return data["choices"][0]["message"].get("content", "")
+        except Exception as e:  # noqa: BLE001
+            bt.logging.warning(
+                f"chat endpoint unavailable ({type(e).__name__}), using raw completions"
+            )
+            return None
+
+    def _vllm_completions(self, prompt: str, max_tokens: int, timeout_s: float) -> str:
         req = urllib.request.Request(
             f"{VLLM_HOST}/v1/completions",
             data=json.dumps({
