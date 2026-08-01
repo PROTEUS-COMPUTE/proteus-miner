@@ -45,6 +45,9 @@ MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Meta-Llama-3.1-8B-Instruct")
 # HTTP timeout in seconds. 0 = derive from the request deadline (recommended:
 # there is no point generating past the deadline, the router scores it 0 anyway).
 REQUEST_TIMEOUT_S = float(os.getenv("REQUEST_TIMEOUT_S", "0"))
+# Below this many seconds left, retrying on the completions endpoint cannot
+# produce anything the router will still accept, so it is not attempted.
+MIN_FALLBACK_S = 2.0
 
 # Reasoning ("thinking") models (qwen3, deepseek-r1, QwQ...) emit a private
 # <think>...</think> trace that is NOT the answer. If it leaks into the
@@ -131,9 +134,22 @@ class ExpertEngine:
 
         Falls back to the raw completions call if chat is unavailable: a base
         model with no chat template must keep working rather than go silent.
+        The fallback gets the time that is LEFT, never a fresh budget. The
+        router stops waiting at the deadline, so a second full-length attempt
+        scores zero however well it goes, and it queues more work on an engine
+        that is already the reason the first one was slow.
         """
+        started = time.time()
         text = self._vllm_chat(prompt, max_tokens, timeout_s)
-        return self._vllm_completions(prompt, max_tokens, timeout_s) if text is None else text
+        if text is not None:
+            return text
+        left = timeout_s - (time.time() - started)
+        if left < MIN_FALLBACK_S:
+            raise TimeoutError(
+                f"chat endpoint refused after {timeout_s - left:.1f}s, "
+                f"too little of the {timeout_s:.0f}s deadline left to retry"
+            )
+        return self._vllm_completions(prompt, max_tokens, left)
 
     def _vllm_chat(self, prompt: str, max_tokens: int, timeout_s: float):
         """Returns the answer, or None if this model cannot be chatted with."""
@@ -154,10 +170,16 @@ class ExpertEngine:
             with urllib.request.urlopen(req, timeout=timeout_s) as r:
                 data = json.loads(r.read())
             return data["choices"][0]["message"].get("content", "")
-        except Exception as e:  # noqa: BLE001
-            bt.logging.warning(
-                f"chat endpoint unavailable ({type(e).__name__}), using raw completions"
-            )
+        except urllib.error.HTTPError as e:
+            # An HTTP status is the engine ANSWERING that it will not chat: 400
+            # for a model with no chat template, 404 on a build without the
+            # route. That is the only case a second attempt can fix.
+            #
+            # Everything else is deliberately not caught. A timeout means the
+            # engine is busy, and retrying hands it the same work again, which
+            # is what made it late in the first place. A connection error means
+            # vLLM is down, and the completions endpoint is on the same server.
+            bt.logging.warning(f"chat endpoint refused (HTTP {e.code}), using raw completions")
             return None
 
     def _vllm_completions(self, prompt: str, max_tokens: int, timeout_s: float) -> str:
