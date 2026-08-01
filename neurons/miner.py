@@ -16,6 +16,8 @@
 # CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
+import asyncio
+import functools
 import os
 import socket
 import time
@@ -53,10 +55,24 @@ class Miner(BaseMinerNeuron):
         # did not match production, and told operators they were too slow when
         # they were comfortably inside the real budget.
         self.router_deadline_ms = synapse.deadline_ms
-        result = self.engine.infer(
-            prompt=synapse.prompt,
-            max_tokens=synapse.max_tokens,
-            deadline_ms=synapse.deadline_ms,
+        # infer() blocks: it waits on an HTTP call to vLLM for as long as the
+        # generation takes, up to the whole deadline. Called directly from this
+        # coroutine it would freeze the axon's event loop for those seconds, so
+        # nothing else the axon owes anyone gets served in the meantime, not the
+        # blacklist checks, not a second request, not the connection handling.
+        #
+        # It has not been costing anything visible: the router sends one request
+        # per expert per round, so there is usually nothing else to serve. That
+        # is luck rather than design, and it stops being true the moment a miner
+        # is queried twice at once.
+        result = await asyncio.get_running_loop().run_in_executor(
+            None,
+            functools.partial(
+                self.engine.infer,
+                prompt=synapse.prompt,
+                max_tokens=synapse.max_tokens,
+                deadline_ms=synapse.deadline_ms,
+            ),
         )
         synapse.completion = result["completion"]
         synapse.model_used = result["model_used"]
