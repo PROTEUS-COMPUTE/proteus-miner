@@ -67,6 +67,12 @@ services:
     environment:
       VLLM_HOST: http://proteus-vllm-${GPU_ID:-0}:8000
       MODEL_NAME: ${MODEL:-Qwen/Qwen2.5-3B-Instruct-AWQ}
+      # This container has no nvidia-smi, so the launcher reads the card name on
+      # the host and passes it in. The miner reports it to the router alongside
+      # the model, which is what lets the network publish real per-GPU figures
+      # instead of guesses. Set GPU_NAME= (empty) to keep your hardware to
+      # yourself; nothing else changes.
+      GPU_NAME: ${GPU_NAME:-}
     # RELAY_EXTERNAL is empty without relay; the launcher fills it with
     # --axon.external_ip/--axon.external_port when RELAY=1.
     command: >

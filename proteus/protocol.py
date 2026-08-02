@@ -50,6 +50,15 @@ class InferenceSynapse(bt.Synapse):
     model_used: typing.Optional[str] = None
     tokens_generated: int = 0
     response_hash: typing.Optional[str] = None
+    # Declared by the miner from the GPU_NAME environment variable, empty when
+    # it is unset. Diagnostic only, like `model_used`: it never reaches a score,
+    # and a miner is free to leave it blank or put anything in it.
+    #
+    # It exists so the network can answer "what does a 4090 actually deliver on
+    # a 14B", which today nobody can, ourselves included. The router already
+    # logs the model and the generation time; the card is the missing third of
+    # that triplet, and without it every figure published per GPU is a guess.
+    gpu: typing.Optional[str] = None
 
     def compute_hash(self) -> str:
         """Hash of the response for the commit-reveal scheme."""

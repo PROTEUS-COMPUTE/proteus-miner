@@ -258,6 +258,11 @@ for i in "${!GPU_IDX[@]}"; do
   export AXON_PORT=$((8091 + idx))
   export VLLM_IMAGE="$(image_for_gpu "$name")"
   export RELAY_EXTERNAL=""
+  # `$name` is this card's model, already read from nvidia-smi to pick the vLLM
+  # image. Passing it on lets the router record what THIS card delivers, per
+  # card rather than per host, which is the whole point of one stack per GPU.
+  # Export GPU_NAME= before running to keep it private.
+  export GPU_NAME="${GPU_NAME-$name}"
 
   profile=()
   if [ "$RELAY" = "1" ]; then

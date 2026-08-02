@@ -44,7 +44,16 @@ class Miner(BaseMinerNeuron):
         super(Miner, self).__init__(config=config)
         backend = getattr(self.config.expert, "backend", "vllm")
         self.engine = ExpertEngine(backend=backend)
-        bt.logging.info(f"PROTEUS expert initialized: backend={backend}")
+        # Read once at startup: this container has no nvidia-smi, it only speaks
+        # HTTP to vLLM, so the launcher that DOES see the hardware passes the
+        # name in. Unset means unset, and the field simply stays empty: a miner
+        # who does not want to say what it runs on clears GPU_NAME and nothing
+        # else changes.
+        self.gpu_name = os.getenv("GPU_NAME", "").strip()[:64]
+        bt.logging.info(
+            f"PROTEUS expert initialized: backend={backend}"
+            + (f", gpu={self.gpu_name}" if self.gpu_name else ", gpu not declared")
+        )
 
     async def forward(
         self, synapse: InferenceSynapse
@@ -77,6 +86,7 @@ class Miner(BaseMinerNeuron):
         synapse.completion = result["completion"]
         synapse.model_used = result["model_used"]
         synapse.tokens_generated = result["tokens_generated"]
+        synapse.gpu = self.gpu_name or None
         synapse.response_hash = synapse.compute_hash()
         return synapse
 

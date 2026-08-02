@@ -26,6 +26,14 @@ RELAY="${RELAY:-0}"
 export GPU_ID="${GPU_ID:-0}"
 export AXON_PORT="${AXON_PORT:-8091}"
 
+# The card model, read here because the miner container cannot see the hardware.
+# It is reported to the router next to the model served, so the network can
+# publish what a given GPU actually delivers rather than an estimate. Export
+# GPU_NAME= yourself to keep it private; the field then stays empty and nothing
+# else is affected.
+export GPU_NAME="${GPU_NAME-$(nvidia-smi --query-gpu=name --format=csv,noheader \
+  -i "$GPU_ID" 2>/dev/null | head -1)}"
+
 # Containers used to be named without a card suffix. After an update compose
 # creates the suffixed ones and leaves the old pair running, still holding the
 # GPU and the axon port, which looks exactly like a node that starts but is never
