@@ -71,12 +71,16 @@ fi
 mapfile -t ALL_GPUS < <(nvidia-smi --query-gpu=index,memory.total,name --format=csv,noheader,nounits)
 [ "${#ALL_GPUS[@]}" -gt 0 ] || die "nvidia-smi reported no GPU."
 
-declare -a GPU_IDX GPU_VRAM GPU_NAME
+# Read the operator's choice before anything else touches the name: unset means
+# take it from the card, set (even to empty) means use exactly what they gave.
+GPU_NAME_OPT="${GPU_NAME-__auto__}"
+
+declare -a GPU_IDX GPU_VRAM GPU_MODEL
 for row in "${ALL_GPUS[@]}"; do
   IFS=, read -r idx vram name <<<"$row"
   idx="${idx// /}"; vram="${vram// /}"; name="$(echo "$name" | sed 's/^ *//;s/ *$//;s/^NVIDIA //')"
   if [ -n "${GPUS:-}" ] && [[ ",${GPUS// /}," != *",$idx,"* ]]; then continue; fi
-  GPU_IDX+=("$idx"); GPU_VRAM+=("$vram"); GPU_NAME+=("$name")
+  GPU_IDX+=("$idx"); GPU_VRAM+=("$vram"); GPU_MODEL+=("$name")
 done
 [ "${#GPU_IDX[@]}" -gt 0 ] || die "GPUS='${GPUS:-}' selected no card."
 
@@ -114,7 +118,7 @@ log "gpus        ${#GPU_IDX[@]} selected"
 for i in "${!GPU_IDX[@]}"; do
   m="$(model_for_vram "${GPU_VRAM[$i]}")"
   printf '              [%s] %-28s %5s MB  %s\n' \
-    "${GPU_IDX[$i]}" "${GPU_NAME[$i]}" "${GPU_VRAM[$i]}" "${m:-UNSUPPORTED, needs 8 GB VRAM}"
+    "${GPU_IDX[$i]}" "${GPU_MODEL[$i]}" "${GPU_VRAM[$i]}" "${m:-UNSUPPORTED, needs 8 GB VRAM}"
 done
 
 if [ "${1:-}" = "--plan" ]; then
@@ -218,7 +222,7 @@ stack_rss_mb() {  # host RAM actually held by one stack
 started=0; skipped=0; measured_mb=0
 
 for i in "${!GPU_IDX[@]}"; do
-  idx="${GPU_IDX[$i]}"; vram="${GPU_VRAM[$i]}"; name="${GPU_NAME[$i]}"
+  idx="${GPU_IDX[$i]}"; vram="${GPU_VRAM[$i]}"; name="${GPU_MODEL[$i]}"
   model="$(model_for_vram "$vram")"
 
   if [ -z "$model" ]; then
@@ -262,7 +266,8 @@ for i in "${!GPU_IDX[@]}"; do
   # image. Passing it on lets the router record what THIS card delivers, per
   # card rather than per host, which is the whole point of one stack per GPU.
   # Export GPU_NAME= before running to keep it private.
-  export GPU_NAME="${GPU_NAME-$name}"
+  if [ "$GPU_NAME_OPT" = "__auto__" ]; then export GPU_NAME="$name"
+  else export GPU_NAME="$GPU_NAME_OPT"; fi
 
   profile=()
   if [ "$RELAY" = "1" ]; then
