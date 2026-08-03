@@ -93,10 +93,27 @@ disk_free_gb()     { df -BG --output=avail /var/lib/docker 2>/dev/null | tail -1
 model_for_vram() {
   local mb="$1"
   [ "$mb" -lt 7000 ] && { echo ""; return; }
-  if [ -n "${MODEL_OVERRIDE:-}" ]; then echo "$MODEL_OVERRIDE"; return; fi
+  if [ -n "${MODEL_OVERRIDE:-}" ]; then
+    # The 32B is the one choice that loses on both axes at once: 82% of its
+    # answers miss the 12s window, and even the ones that make it score below
+    # the 7B on quality. Measured 2026-08-03 on 468 answers, median reward
+    # 0.244 against 0.812. Say so once and obey anyway, it is their machine.
+    case "$MODEL_OVERRIDE" in
+      *32B*) warn "MODEL=$MODEL_OVERRIDE: 32B models are scored ~3x lower than a 7B on this network, they answer too slowly to earn full credit" ;;
+    esac
+    echo "$MODEL_OVERRIDE"; return
+  fi
   # (a MODEL still carrying the doc placeholder is rejected in the preflight)
+  # Thresholds from what cards on this network actually deliver, measured
+  # 2026-08-03 over 4170 scored answers. A 12 GB RTX 4070 serves the 7B inside
+  # 8.9s, so 15 GB was leaving 12 GB cards on the 3B for nothing.
+  #
+  # The 3B is not the safe choice it looks like: 43% of its answers land past
+  # the 12s full-credit mark against 5% for the 7B, and it scores 0.744 on
+  # quality alone against 0.812. It is served by the slowest machines, and
+  # picking it by default puts good cards in that company.
   if   [ "$mb" -ge 22000 ]; then echo "Qwen/Qwen2.5-14B-Instruct-AWQ"
-  elif [ "$mb" -ge 15000 ]; then echo "Qwen/Qwen2.5-7B-Instruct-AWQ"
+  elif [ "$mb" -ge 12000 ]; then echo "Qwen/Qwen2.5-7B-Instruct-AWQ"
   else echo "Qwen/Qwen2.5-3B-Instruct-AWQ"; fi
 }
 
