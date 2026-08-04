@@ -32,3 +32,22 @@ jobs:
             ghcr.io/proteus-compute/proteus-miner:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Rented GPUs (RunPod, Vast) run ONE container and offer no nested docker,
+      # so the cloud path needs vLLM and the neuron in a single image. They still
+      # do not share an interpreter: see Dockerfile.cloud.
+      #
+      # Built here rather than pushed by hand so no registry credential has to
+      # exist on anyone's machine, and so the published image always matches a
+      # commit. Separate cache scope: the two images share almost no layers and
+      # one would keep evicting the other.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.cloud
+          push: true
+          tags: |
+            ghcr.io/proteus-compute/proteus-miner-cloud:latest
+            ghcr.io/proteus-compute/proteus-miner-cloud:${{ github.sha }}
+          cache-from: type=gha,scope=cloud
+          cache-to: type=gha,mode=max,scope=cloud

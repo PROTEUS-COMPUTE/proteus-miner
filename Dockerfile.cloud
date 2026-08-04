@@ -1,0 +1,55 @@
+# PROTEUS expert, one container, for rented GPUs (RunPod, Vast.ai).
+#
+# The Linux path runs vLLM and the neuron as two containers on purpose, to keep
+# vLLM's CUDA torch away from bittensor's. A rented pod runs ONE container and
+# offers no nested docker, so the two have to share an image here. They still do
+# NOT share an interpreter: bittensor gets its own venv with a CPU torch, so the
+# dependency split that the two-container layout buys us is preserved inside.
+#
+# Built on the pinned vLLM image so a cloud pod serves exactly what the rest of
+# the network serves. RTX 50-series machines need the newer image instead; see
+# VLLM_IMAGE in .env.example and rebuild with --build-arg VLLM_IMAGE=...
+ARG VLLM_IMAGE=vllm/vllm-openai:v0.6.6.post1
+FROM ${VLLM_IMAGE}
+
+# frpc, for the relay. Not an optional extra on rented hardware: both providers
+# document that the public port a pod is given CHANGES on every reset (RunPod:
+# "external port mappings change whenever your Pod resets"; Vast: external ports
+# are "assigned somewhat randomly"). An axon published from those values goes
+# stale on the first restart and the router silently stops reaching it. The
+# relay port is derived from the hotkey, so it survives restarts unchanged.
+ARG FRP_VERSION=0.61.1
+RUN set -eu; \
+    arch="$(uname -m)"; \
+    case "$arch" in x86_64) frparch=amd64 ;; aarch64) frparch=arm64 ;; \
+      *) echo "unsupported arch $arch" >&2; exit 1 ;; esac; \
+    curl -fsSL "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_${frparch}.tar.gz" \
+      | tar -xz -C /tmp; \
+    mv "/tmp/frp_${FRP_VERSION}_linux_${frparch}/frpc" /usr/local/bin/frpc; \
+    rm -rf /tmp/frp_*; \
+    frpc --version
+
+# bittensor in its OWN venv: no --system-site-packages, so it pulls a CPU torch
+# and never sees the image's CUDA torch. This is the whole reason the two-image
+# split existed, kept intact.
+RUN python3 -m venv /opt/proteus \
+    && /opt/proteus/bin/pip install --no-cache-dir "setuptools<81" \
+    && /opt/proteus/bin/pip install --no-cache-dir \
+         --index-url https://download.pytorch.org/whl/cpu torch \
+    && /opt/proteus/bin/pip install --no-cache-dir \
+         bittensor==8.5.1 "uvicorn<0.34" numpy
+
+WORKDIR /app
+COPY . .
+ENV PYTHONPATH=/app
+
+# Filled by the operator in the provider's template. The container refuses to
+# start without it rather than mining to nobody; see cloud_register.py.
+ENV PROTEUS_OWNER=""
+ENV NETUID=1
+ENV SUBTENSOR_NETWORK=wss://rpc.proteus-agent.com
+ENV WALLET_NAME=miner
+ENV WALLET_HOTKEY=expert1
+ENV AXON_PORT=8091
+
+ENTRYPOINT ["/bin/bash", "/app/cloud_entrypoint.sh"]
