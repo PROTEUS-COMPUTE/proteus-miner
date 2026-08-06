@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir "setuptools<81" \
         bittensor==8.5.1 \
         bittensor-cli==8.4.4 \
         "uvicorn<0.34" \
+        "pydantic==2.13.4" \
         numpy
 
 WORKDIR /app

@@ -37,7 +37,7 @@ RUN python3 -m venv /opt/proteus \
     && /opt/proteus/bin/pip install --no-cache-dir \
          --index-url https://download.pytorch.org/whl/cpu torch \
     && /opt/proteus/bin/pip install --no-cache-dir \
-         bittensor==8.5.1 "uvicorn<0.34" numpy
+         bittensor==8.5.1 "uvicorn<0.34" "pydantic==2.13.4" numpy
 
 WORKDIR /app
 COPY . .

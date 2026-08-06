@@ -3,6 +3,13 @@
 bittensor==8.5.1
 bittensor-cli==8.4.4  # pin: pre-dTAO btcli. Newer btcli pulls async-substrate-interface (cyscale), which conflicts with bittensor 8.5.1's scalecodec and refuses to load.
 uvicorn<0.34        # pin: newer uvicorn breaks bittensor's nested-asyncio patch
+# pin: bittensor only asks for pydantic<3,>=2.3, and pydantic decides how the
+# synapse is serialised before it is signed. A miner whose version serialises
+# `version` and `port` as strings where the validator emits integers produces a
+# different body hash, so every request fails verification with a signature
+# mismatch and the node earns nothing while looking healthy. Match what the
+# validator runs.
+pydantic==2.13.4
 torch
 numpy
 sentence-transformers  # embeddings for reward scoring (runs on CPU, router-side)
