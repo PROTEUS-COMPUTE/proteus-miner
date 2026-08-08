@@ -81,12 +81,29 @@ if [ "$RELAY" = "1" ]; then
   fi
   # ss58 of the hotkey, then a stable public port (FNV-1a into 20000-25000),
   # the SAME scheme the desktop app uses so a hotkey always maps to one port.
+  #
+  # 5000 ports for a growing network means two hotkeys eventually hash to the
+  # same one. The relay gives that port to whoever connects first and refuses
+  # the other with "port already used", who then mines into the void with a
+  # tunnel that never opens. Setting RELAY_PORT in .env is the way out: it is
+  # honoured here and published on chain, so the axon and the tunnel agree.
   SS58="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['ss58Address'])" "$HK")"
-  RELAY_PORT="$(python3 -c "
+  if [ -n "${RELAY_PORT:-}" ]; then
+    case "$RELAY_PORT" in
+      ''|*[!0-9]*) echo "RELAY_PORT must be a number, got '$RELAY_PORT'"; exit 1;;
+    esac
+    if [ "$RELAY_PORT" -lt 20000 ] || [ "$RELAY_PORT" -gt 25000 ]; then
+      echo "RELAY_PORT must be between 20000 and 25000, got $RELAY_PORT"
+      exit 1
+    fi
+    echo "relay port forced to $RELAY_PORT (from your environment)"
+  else
+    RELAY_PORT="$(python3 -c "
 h=2166136261
 for b in '$SS58'.encode():
     h ^= b; h = (h*16777619) & 0xffffffff
 print(20000 + h % 5000)")"
+  fi
   export RELAY_PORT
   export RELAY_EXTERNAL="--axon.external_ip $RELAY_HOST --axon.external_port $RELAY_PORT"
   echo "relay ON  ->  axon published at $RELAY_HOST:$RELAY_PORT  (hotkey $SS58)"
