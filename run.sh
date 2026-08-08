@@ -9,6 +9,22 @@
 # WALLET_HOTKEY, GPU_UTIL, RELAY.
 set -euo pipefail
 
+# The header above promises a .env file, and docker compose does read it, but
+# this script never did: anything set there was honoured inside the containers
+# and ignored by the port derivation right here. Values already exported by the
+# caller still win, same precedence compose applies.
+if [ -f .env ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ''|'#'*) continue;; esac
+    key=${line%%=*}
+    [ "$key" = "$line" ] && continue
+    case "$key" in *[!A-Za-z0-9_]*) continue;; esac
+    value=${line#*=}
+    value=${value%$'\r'}
+    eval ": \${$key:=\$value}" && export "$key"
+  done < .env
+fi
+
 # shared relay endpoint (public); the token only gates tunnel creation, the
 # relay just forwards to public axons.
 export RELAY_HOST="${RELAY_HOST:-89.116.27.24}"
